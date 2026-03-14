@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+
+# Next.js
+frontend/.next/
+frontend/out/
+
+# Production
+build/
+dist/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+
+# Virtual environment
+backend/venv/
+venv/
+.env
+
+# Database
+*.sqlite3
+db.sqlite3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Media uploads
+backend/media/
+
+# Static collected files
+backend/staticfiles/
+
+# Misc
+*.log
+.gemini/
