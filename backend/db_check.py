@@ -12,7 +12,7 @@ def check_package(package_name):
     return spec is not None
 
 def main():
-    print("=== Core Inventory Project Diagnostic ===")
+    print("=== Inventory Management System Project Diagnostic ===")
     
     # 1. Setup Django Environment
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')

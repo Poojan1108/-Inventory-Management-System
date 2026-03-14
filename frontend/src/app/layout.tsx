@@ -14,8 +14,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Core Inventory",
+  title: "Inventory Management System",
   description: "Inventory Management System",
+  icons: {
+    icon: "/logo.png",
+  },
 };
 
 export default function RootLayout({

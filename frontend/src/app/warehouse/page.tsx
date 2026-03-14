@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
+import Logo from '@/components/Logo';
 import Link from 'next/link';
 import {
   Box, Home, Menu, ArrowDownUp, ClipboardList, Sliders, Clock, Building2, Search, Plus, X, LogOut, MapPin
@@ -393,8 +394,11 @@ export default function WarehouseConfigPage() {
       {/* Sidebar */}
       <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col shrink-0">
         <div className="p-6 flex items-center space-x-3 border-b border-slate-800">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shrink-0"><Box className="w-5 h-5 text-white" /></div>
-          <span className="text-xl font-bold text-white tracking-tight">Core Inventory</span>
+          <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shrink-0 overflow-hidden shadow-sm"><Logo className="w-10 h-10" /></div>
+          <div className="flex flex-col">
+            <span className="text-lg font-bold text-white leading-none tracking-tight mb-1">Inventory</span>
+            <span className="text-[10px] sm:text-xs font-semibold text-blue-400 tracking-wider uppercase leading-none">Management System</span>
+          </div>
         </div>
         <nav className="flex-1 overflow-y-auto py-6 space-y-1 px-4 custom-scrollbar">
           <div className="mb-4"><Link href="/" className="flex items-center space-x-3 hover:bg-slate-800 hover:text-white px-4 py-2.5 rounded-lg transition-all"><Home className="w-5 h-5" /><span>Dashboard</span></Link></div>

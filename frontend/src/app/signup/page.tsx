@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { Box, Eye, EyeOff } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 
+import Logo from '@/components/Logo';
+
 export default function SignupPage() {
   const router = useRouter();
   const [form, setForm] = useState({
@@ -65,16 +67,17 @@ export default function SignupPage() {
     <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
       <div className="w-full max-w-md">
         {/* Logo */}
-        <div className="flex items-center justify-center space-x-3 mb-8">
-          <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-            <Box className="w-6 h-6 text-white" />
+        <div className="flex flex-col items-center justify-center mb-6">
+          <Logo className="w-14 h-14 mb-2 drop-shadow-sm" />
+          <div className="flex flex-col items-center">
+            <span className="text-[28px] font-bold text-slate-900 leading-none tracking-tight">Inventory</span>
+            <span className="text-xs font-bold text-blue-600 tracking-[0.2em] uppercase mt-1">Management System</span>
           </div>
-          <span className="text-2xl font-bold text-slate-900 tracking-tight">Core Inventory</span>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
           <h1 className="text-xl font-semibold text-slate-900 mb-1">Create an account</h1>
-          <p className="text-sm text-slate-500 mb-6">Get started with Core Inventory</p>
+          <p className="text-sm text-slate-500 mb-6">Get started with Inventory Management System</p>
 
           {error && (
             <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">

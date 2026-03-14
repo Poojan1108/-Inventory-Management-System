@@ -5,15 +5,46 @@ import Link from "next/link";
 import { Box, Eye, EyeOff } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 
+import Logo from '@/components/Logo';
+
 export default function LoginPage() {
   const [form, setForm] = useState({ username: "", password: "" });
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ username?: string; password?: string }>({});
+
+  const validate = () => {
+    const errs: { username?: string; password?: string } = {};
+    const val = form.username.trim();
+
+    // If it looks like an email (contains @), enforce valid email format
+    if (val.includes("@")) {
+      const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRe.test(val)) {
+        errs.username = "Please enter a valid email address.";
+      }
+    } else if (val.length === 0) {
+      errs.username = "Email or username is required.";
+    }
+
+    if (form.password.length < 8) {
+      errs.password = "Password must be at least 8 characters.";
+    }
+
+    return errs;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    const errs = validate();
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs);
+      return;
+    }
+    setFieldErrors({});
     setLoading(true);
     try {
       const res = await api.auth.login(form);
@@ -41,11 +72,12 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
       <div className="w-full max-w-md">
         {/* Logo */}
-        <div className="flex items-center justify-center space-x-3 mb-8">
-          <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-            <Box className="w-6 h-6 text-white" />
+        <div className="flex flex-col items-center justify-center mb-6">
+          <Logo className="w-14 h-14 mb-2 drop-shadow-sm" />
+          <div className="flex flex-col items-center">
+            <span className="text-[28px] font-bold text-slate-900 leading-none tracking-tight">Inventory</span>
+            <span className="text-xs font-bold text-blue-600 tracking-[0.2em] uppercase mt-1">Management System</span>
           </div>
-          <span className="text-2xl font-bold text-slate-900 tracking-tight">Core Inventory</span>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
@@ -67,10 +99,11 @@ export default function LoginPage() {
                 type="text"
                 required
                 value={form.username}
-                onChange={(e) => setForm({ ...form, username: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                onChange={(e) => { setForm({ ...form, username: e.target.value }); setFieldErrors(f => ({ ...f, username: undefined })); }}
+                className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${fieldErrors.username ? 'border-red-400 bg-red-50' : 'border-slate-300'}`}
                 placeholder="you@example.com"
               />
+              {fieldErrors.username && <p className="mt-1 text-xs text-red-600">{fieldErrors.username}</p>}
             </div>
 
             <div>
@@ -80,9 +113,10 @@ export default function LoginPage() {
                   type={showPw ? "text" : "password"}
                   required
                   value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
-                  placeholder="Enter your password"
+                  onChange={(e) => { setForm({ ...form, password: e.target.value }); setFieldErrors(f => ({ ...f, password: undefined })); }}
+                  className={`w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10 ${fieldErrors.password ? 'border-red-400 bg-red-50' : 'border-slate-300'}`}
+                  placeholder="Min. 8 characters"
+                  minLength={8}
                 />
                 <button
                   type="button"
@@ -92,6 +126,7 @@ export default function LoginPage() {
                   {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+              {fieldErrors.password && <p className="mt-1 text-xs text-red-600">{fieldErrors.password}</p>}
             </div>
 
             <div className="flex items-center justify-end">

@@ -45,7 +45,10 @@ export default function CreateReceiptPage() {
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shrink-0">
             <Box className="w-5 h-5 text-white" />
           </div>
-          <span className="text-xl font-bold text-white tracking-tight">Core Inventory</span>
+          <div className="flex flex-col">
+            <span className="text-lg font-bold text-white leading-none tracking-tight mb-1">Inventory</span>
+            <span className="text-[10px] sm:text-xs font-semibold text-blue-400 tracking-wider uppercase leading-none">Management System</span>
+          </div>
         </div>
 
         <nav className="flex-1 overflow-y-auto py-6 space-y-1 px-4 custom-scrollbar">

@@ -169,7 +169,7 @@ export default function ForgotPasswordPage() {
             <Box className="w-6 h-6 text-white" />
           </div>
           <span className="text-2xl font-bold text-slate-900 tracking-tight">
-            Core Inventory
+            Inventory Management System
           </span>
         </div>
 

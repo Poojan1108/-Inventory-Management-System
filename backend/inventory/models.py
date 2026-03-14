@@ -1,5 +1,5 @@
 """
-Phase 1: Master Data Models for Core Inventory Management System.
+Phase 1: Master Data Models for Inventory Management System.
 
 Dependency order:
   1. CustomUser (Authentication)
