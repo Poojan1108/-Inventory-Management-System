@@ -1,43 +1,315 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import {
-  Box, Home, Menu, ArrowDownUp, ClipboardList, Sliders, Clock, Building2, Search, Plus, Upload, Check
+  Box, Home, Menu, ArrowDownUp, ClipboardList, Sliders, Clock, Building2,
+  Search, Plus, Check, X,
 } from 'lucide-react';
-import { api, StockAdjustment } from '@/lib/api';
+import {
+  api,
+  Operation,
+  Product,
+  Location as LocationType,
+  ApiError,
+} from '@/lib/api';
 
-export default function StockAdjustmentsPage() {
-  const [items, setItems] = useState<StockAdjustment[]>([]);
-  const [loading, setLoading] = useState(true);
+// =====================================================================
+// Status Badge
+// =====================================================================
 
+const STATUS_STYLES: Record<string, string> = {
+  draft: 'bg-slate-100 text-slate-600',
+  waiting: 'bg-amber-100 text-amber-700',
+  ready: 'bg-blue-100 text-blue-700',
+  done: 'bg-emerald-100 text-emerald-700',
+  canceled: 'bg-slate-100 text-slate-500',
+};
+
+function StatusBadge({ status }: { status: string }) {
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wide ${STATUS_STYLES[status] || 'bg-slate-100 text-slate-500'}`}>
+      {status}
+    </span>
+  );
+}
+
+// =====================================================================
+// Create Adjustment Modal
+// =====================================================================
+
+interface CreateAdjustmentModalProps {
+  open: boolean;
+  onClose: () => void;
+  onCreated: () => void;
+}
+
+function CreateAdjustmentModal({ open, onClose, onCreated }: CreateAdjustmentModalProps) {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [locations, setLocations] = useState<LocationType[]>([]);
+
+  const [reference, setReference] = useState('');
+  const [productId, setProductId] = useState<string>('');
+  const [locationId, setLocationId] = useState<string>('');
+  const [physicalCount, setPhysicalCount] = useState<string>('');
+  const [reason, setReason] = useState('correction');
+
+  const [systemQty, setSystemQty] = useState<number | null>(null);
+  const [loadingQty, setLoadingQty] = useState(false);
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  // Fetch products and locations when modal opens
   useEffect(() => {
-    api.adjustments.list().then(data => {
-      setItems(data);
-      setLoading(false);
-    }).catch(() => setLoading(false));
-  }, []);
+    if (!open) return;
+    Promise.all([api.products.list(), api.locations.list()])
+      .then(([p, l]) => {
+        setProducts(p);
+        setLocations(l.filter(loc => loc.location_type === 'internal'));
+      })
+      .catch(() => {});
+  }, [open]);
 
-  const updatePhysicalQty = async (id: number, val: string) => {
-    const newQty = val === '' ? 0 : parseInt(val, 10);
-    if (isNaN(newQty)) return;
-    setItems(items.map(item => item.id === id ? { ...item, physical_qty: newQty, difference: newQty - item.system_qty } : item));
-    api.adjustments.update(id, { physical_qty: newQty }).catch(() => {});
+  // Fetch system quantity when product + location are both selected
+  useEffect(() => {
+    if (!productId || !locationId) {
+      setSystemQty(null);
+      return;
+    }
+    setLoadingQty(true);
+    api.stockQuants.list({ product: productId, location: locationId })
+      .then(quants => {
+        setSystemQty(quants.length > 0 ? quants[0].quantity : 0);
+      })
+      .catch(() => setSystemQty(0))
+      .finally(() => setLoadingQty(false));
+  }, [productId, locationId]);
+
+  const resetForm = () => {
+    setReference('');
+    setProductId('');
+    setLocationId('');
+    setPhysicalCount('');
+    setReason('correction');
+    setSystemQty(null);
+    setFieldErrors({});
   };
 
-  const updateReason = async (id: number, reason: string) => {
-    setItems(items.map(item => item.id === id ? { ...item, reason } : item));
-    api.adjustments.update(id, { reason }).catch(() => {});
-  };
+  const handleClose = () => { resetForm(); onClose(); };
 
-  const handleApply = async (id: number) => {
+  const difference = systemQty !== null && physicalCount !== ''
+    ? Number(physicalCount) - systemQty
+    : null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setFieldErrors({});
+
+    if (!productId || !locationId || physicalCount === '') {
+      setFieldErrors({ non_field_errors: 'Product, location and physical count are required.' });
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
-      const updated = await api.adjustments.apply(id);
-      setItems(items.map(item => item.id === id ? updated : item));
-    } catch {
-      alert("Failed to apply adjustment.");
+      // 1. Create the adjustment operation
+      const op = await api.operations.create({
+        reference,
+        operation_type: 'adjustment',
+        source_location: Number(locationId),
+        status: 'ready',
+        lines: [{ product: Number(productId), received_qty: Number(physicalCount) }],
+      });
+
+      // 2. Immediately validate to apply the correction
+      await api.operations.validate(op.id);
+
+      handleClose();
+      onCreated();
+    } catch (err) {
+      const apiErr = err as ApiError;
+      if (apiErr.status === 400 && apiErr.body) {
+        const mapped: Record<string, string> = {};
+        for (const [key, val] of Object.entries(apiErr.body)) {
+          mapped[key] = Array.isArray(val) ? val.join(' ') : String(val);
+        }
+        setFieldErrors(mapped);
+      } else {
+        const detail = (err as ApiError).body?.detail;
+        setFieldErrors({ non_field_errors: typeof detail === 'string' ? detail : 'Failed to apply adjustment. Please try again.' });
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={handleClose}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+          <h2 className="text-lg font-bold text-slate-900">Create Stock Adjustment</h2>
+          <button onClick={handleClose} className="p-1 text-slate-400 hover:text-slate-600 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {fieldErrors.non_field_errors && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-2">
+              {fieldErrors.non_field_errors}
+            </div>
+          )}
+
+          {/* Reference */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Reference *</label>
+            <input
+              type="text"
+              required
+              value={reference}
+              onChange={e => setReference(e.target.value)}
+              placeholder="e.g. WH/ADJ/001"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-blue-500 focus:border-blue-500 transition-colors"
+            />
+            {fieldErrors.reference && <p className="text-red-600 text-xs mt-1">{fieldErrors.reference}</p>}
+          </div>
+
+          {/* Product */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Product *</label>
+            <select
+              required
+              value={productId}
+              onChange={e => setProductId(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-blue-500 focus:border-blue-500 cursor-pointer transition-colors"
+            >
+              <option value="">Select product...</option>
+              {products.map(p => (
+                <option key={p.id} value={p.id}>[{p.sku}] {p.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Location */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Location *</label>
+            <select
+              required
+              value={locationId}
+              onChange={e => setLocationId(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-blue-500 focus:border-blue-500 cursor-pointer transition-colors"
+            >
+              <option value="">Select location...</option>
+              {locations.map(l => (
+                <option key={l.id} value={l.id}>[{l.short_code}] {l.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* System Qty + Physical Count row */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">System Quantity</label>
+              <div className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-slate-50 text-slate-500 font-medium">
+                {loadingQty
+                  ? 'Loading...'
+                  : systemQty !== null
+                    ? systemQty
+                    : '\u2014'}
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Physical Count *</label>
+              <input
+                type="number"
+                required
+                min="0"
+                value={physicalCount}
+                onChange={e => setPhysicalCount(e.target.value)}
+                placeholder="e.g. 48"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-900 outline-none focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              />
+              {difference !== null && (
+                <p className="text-xs mt-1.5 font-medium">
+                  Difference:{' '}
+                  <span className={difference < 0 ? 'text-red-600' : difference > 0 ? 'text-emerald-600' : 'text-slate-500'}>
+                    {difference > 0 ? `+${difference}` : difference}
+                  </span>
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Reason */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Reason</label>
+            <select
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-blue-500 focus:border-blue-500 cursor-pointer transition-colors"
+            >
+              <option value="correction">Correction</option>
+              <option value="damage">Damage</option>
+              <option value="theft">Theft</option>
+              <option value="found">Found</option>
+            </select>
+          </div>
+
+          {/* Footer */}
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={handleClose} className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+            >
+              {isSubmitting ? 'Applying...' : 'Apply Adjustment'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// =====================================================================
+// Stock Adjustments Page
+// =====================================================================
+
+export default function StockAdjustmentsPage() {
+  const [adjustments, setAdjustments] = useState<Operation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
+
+  const fetchAdjustments = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    api.operations.list({ operation_type: 'adjustment' })
+      .then(data => setAdjustments(data))
+      .catch(() => setError("Failed to load adjustments"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { fetchAdjustments(); }, [fetchAdjustments]);
+
+  const skeletonRows = Array.from({ length: 4 }, (_, i) => (
+    <tr key={`skel-${i}`}>
+      <td className="px-6 py-5"><div className="space-y-1"><div className="h-4 w-28 bg-slate-200 rounded animate-pulse" /><div className="h-3 w-20 bg-slate-100 rounded animate-pulse" /></div></td>
+      <td className="px-6 py-5"><div className="h-4 w-32 bg-slate-200 rounded animate-pulse" /></td>
+      <td className="px-6 py-5"><div className="h-4 w-12 bg-slate-200 rounded animate-pulse" /></td>
+      <td className="px-6 py-5"><div className="h-4 w-12 bg-slate-200 rounded animate-pulse" /></td>
+      <td className="px-6 py-5"><div className="h-4 w-10 bg-slate-200 rounded animate-pulse" /></td>
+      <td className="px-6 py-5"><div className="h-4 w-14 bg-slate-200 rounded animate-pulse" /></td>
+    </tr>
+  ));
 
   return (
     <div className="flex h-screen w-full bg-slate-50 text-slate-900 font-sans antialiased overflow-hidden">
@@ -70,71 +342,75 @@ export default function StockAdjustmentsPage() {
               <h1 className="text-3xl font-bold text-slate-900 mb-1">Stock Adjustments</h1>
               <p className="text-slate-500 text-sm">Reconcile physical stock counts with system records.</p>
             </div>
-            <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-4">
               <div className="relative w-64 hidden sm:block">
                 <span className="absolute inset-y-0 left-0 flex items-center pl-3"><Search className="w-4 h-4 text-slate-400" /></span>
-                <input type="text" placeholder="Search product or location..." className="block w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg bg-white focus:ring-blue-500 focus:border-blue-500 text-sm font-sans outline-none transition-colors" />
+                <input type="text" placeholder="Search adjustments..." className="block w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg bg-white focus:ring-blue-500 focus:border-blue-500 text-sm outline-none transition-colors" />
               </div>
-              <button className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm shrink-0"><Upload className="w-4 h-4" />Bulk Import</button>
-              <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 shadow-sm shrink-0"><Plus className="w-4 h-4" />New Adjustment</button>
+              <button
+                onClick={() => setShowModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                New Adjustment
+              </button>
             </div>
           </header>
 
+          {error && (
+            <div className="mb-6 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
+              {error}
+            </div>
+          )}
+
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="overflow-x-auto font-sans">
-              {loading ? (
-                <div className="p-12 text-center text-slate-400">Loading adjustments...</div>
-              ) : (
               <table className="w-full text-left text-sm whitespace-nowrap">
                 <thead className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                   <tr>
                     <th className="px-6 py-4">PRODUCT</th>
                     <th className="px-6 py-4">LOCATION</th>
-                    <th className="px-6 py-4">SYSTEM QTY</th>
-                    <th className="px-6 py-4 w-40">PHYSICAL COUNT</th>
-                    <th className="px-6 py-4 text-center">DIFFERENCE</th>
-                    <th className="px-6 py-4">REASON</th>
-                    <th className="px-6 py-4 text-right">ACTIONS</th>
+                    <th className="px-6 py-4">REFERENCE</th>
+                    <th className="px-6 py-4 text-center">PHYSICAL COUNT</th>
+                    <th className="px-6 py-4">STATUS</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {items.map((item) => {
-                    const diff = item.difference;
-                    const diffText = diff > 0 ? `+${diff}` : diff.toString();
-                    let diffColor = 'text-slate-500';
-                    let diffBg = 'bg-transparent';
-                    if (diff < 0) { diffColor = 'text-rose-700 font-bold'; diffBg = 'bg-rose-50 px-2 py-0.5 rounded'; }
-                    else if (diff > 0) { diffColor = 'text-emerald-700 font-bold'; diffBg = 'bg-emerald-50 px-2 py-0.5 rounded'; }
-                    const isApplied = item.status === 'applied';
+                  {loading ? skeletonRows : adjustments.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
+                        No adjustments found. Click &quot;New Adjustment&quot; to create one.
+                      </td>
+                    </tr>
+                  ) : adjustments.map(op => {
+                    const isDone = op.status === 'done';
 
                     return (
-                      <tr key={item.id} className={`${isApplied ? 'bg-slate-50/50' : 'hover:bg-slate-50/50'} transition-colors group`}>
+                      <tr key={op.id} className={`${isDone ? 'bg-slate-50/50' : 'hover:bg-slate-50/50'} transition-colors group`}>
                         <td className="px-6 py-5">
-                          <div className="flex flex-col">
-                            <span className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{item.product_name}</span>
-                            <span className="text-xs text-slate-500 font-medium mt-0.5 tracking-wide">[{item.product_code}]</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-5 text-slate-600">{item.location_name}</td>
-                        <td className="px-6 py-5 text-slate-600 font-medium">{item.system_qty} <span className="text-slate-400 text-xs font-normal">pcs</span></td>
-                        <td className="px-6 py-5">
-                          <input type="number" className={`w-24 text-right border ${isApplied ? 'border-transparent bg-transparent' : 'border-slate-200 bg-white hover:border-blue-300'} rounded-md focus:ring-blue-500 focus:border-blue-500 sm:text-sm font-bold text-slate-900 transition-all px-3 py-1.5 outline-none`} value={item.physical_qty} onChange={(e) => updatePhysicalQty(item.id, e.target.value)} disabled={isApplied} />
-                        </td>
-                        <td className="px-6 py-5 text-center"><span className={`${diffColor} ${diffBg} inline-block min-w-[40px] text-center`}>{diffText}</span></td>
-                        <td className="px-6 py-5">
-                          <select className={`border ${isApplied ? 'border-transparent bg-transparent text-slate-500' : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300'} rounded-md sm:text-sm font-medium transition-all px-3 py-1.5 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500`} value={item.reason} onChange={(e) => updateReason(item.id, e.target.value)} disabled={isApplied}>
-                            <option value="correction">Correction</option>
-                            <option value="damaged">Damaged</option>
-                            <option value="lost">Lost</option>
-                            <option value="theft">Theft</option>
-                            <option value="found">Found</option>
-                          </select>
-                        </td>
-                        <td className="px-6 py-5 text-right font-sans">
-                          {isApplied ? (
-                            <span className="inline-flex items-center gap-1.5 text-emerald-600 font-semibold text-sm">Applied <Check className="w-4 h-4" /></span>
+                          {op.lines.length > 0 ? (
+                            <div className="flex flex-col">
+                              <span className="font-bold text-slate-900">{op.lines[0].product_name}</span>
+                              <span className="text-xs text-slate-500 font-medium mt-0.5">[{op.lines[0].product_sku}]</span>
+                            </div>
                           ) : (
-                            <button onClick={() => handleApply(item.id)} className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm rounded transition-colors shadow-sm disabled:opacity-50" disabled={diff === 0} title={diff === 0 ? "No difference to apply" : "Apply Adjustment"}>Apply</button>
+                            <span className="text-slate-400">\u2014</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-5 text-slate-600">{op.source_location_name || "\u2014"}</td>
+                        <td className="px-6 py-5 font-bold text-slate-900">{op.reference}</td>
+                        <td className="px-6 py-5 text-center">
+                          {op.lines.length > 0 ? (
+                            <span className="font-bold text-slate-900">{op.lines[0].received_qty}</span>
+                          ) : '\u2014'}
+                        </td>
+                        <td className="px-6 py-5">
+                          {isDone ? (
+                            <span className="inline-flex items-center gap-1.5 text-emerald-600 font-semibold text-sm">
+                              Applied <Check className="w-4 h-4" />
+                            </span>
+                          ) : (
+                            <StatusBadge status={op.status} />
                           )}
                         </td>
                       </tr>
@@ -142,13 +418,24 @@ export default function StockAdjustmentsPage() {
                   })}
                 </tbody>
               </table>
-              )}
             </div>
           </div>
         </div>
       </main>
 
-      <style dangerouslySetInnerHTML={{__html: `.custom-scrollbar::-webkit-scrollbar { width: 6px; } .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; } .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; } .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; } input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; } input[type=number] { -moz-appearance: textfield; }`}} />
+      {/* Create Adjustment Modal */}
+      <CreateAdjustmentModal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        onCreated={fetchAdjustments}
+      />
+
+      <style dangerouslySetInnerHTML={{__html: `
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+      `}} />
     </div>
   );
 }

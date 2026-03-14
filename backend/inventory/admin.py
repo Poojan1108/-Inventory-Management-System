@@ -6,6 +6,8 @@ from .models import (
     CustomUser,
     DeliveryItem,
     DeliveryOrder,
+    InternalTransfer,
+    InternalTransferItem,
     Location,
     Product,
     ProductCategory,
@@ -13,6 +15,7 @@ from .models import (
     ReceiptItem,
     StockAdjustment,
     StockMove,
+    StockQuant,
     UnitOfMeasure,
     Warehouse,
 )
@@ -68,7 +71,16 @@ class ContactAdmin(admin.ModelAdmin):
     list_filter = ("contact_type", "is_active")
 
 
-# ---------- Phase 2 ----------
+# ---------- Stock Quants ----------
+
+@admin.register(StockQuant)
+class StockQuantAdmin(admin.ModelAdmin):
+    list_display = ("product", "location", "quantity", "updated_at")
+    list_filter = ("location",)
+    search_fields = ("product__name", "product__sku")
+
+
+# ---------- Receipts ----------
 
 class ReceiptItemInline(admin.TabularInline):
     model = ReceiptItem
@@ -83,6 +95,8 @@ class ReceiptAdmin(admin.ModelAdmin):
     inlines = [ReceiptItemInline]
 
 
+# ---------- Delivery Orders ----------
+
 class DeliveryItemInline(admin.TabularInline):
     model = DeliveryItem
     extra = 1
@@ -96,11 +110,30 @@ class DeliveryOrderAdmin(admin.ModelAdmin):
     inlines = [DeliveryItemInline]
 
 
+# ---------- Internal Transfers ----------
+
+class InternalTransferItemInline(admin.TabularInline):
+    model = InternalTransferItem
+    extra = 1
+
+
+@admin.register(InternalTransfer)
+class InternalTransferAdmin(admin.ModelAdmin):
+    list_display = ("reference", "source_location", "destination_location", "status", "scheduled_date")
+    list_filter = ("status",)
+    search_fields = ("reference",)
+    inlines = [InternalTransferItemInline]
+
+
+# ---------- Stock Adjustments ----------
+
 @admin.register(StockAdjustment)
 class StockAdjustmentAdmin(admin.ModelAdmin):
     list_display = ("product", "location", "system_qty", "physical_qty", "reason", "status")
     list_filter = ("status", "reason")
 
+
+# ---------- Stock Moves ----------
 
 @admin.register(StockMove)
 class StockMoveAdmin(admin.ModelAdmin):
