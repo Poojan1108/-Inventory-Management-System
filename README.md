@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> **Frontend Preview Only:** This deployment is a static demonstration of the UI/UX. 
+> There is currently **no backend functionality** integrated, so features like form submissions or data persistence are inactive.
 # Core Inventory Management System
 
 A centralized, real-time, and double-entry Inventory Management System (IMS) designed to digitize and optimize supply chain operations, replacing inefficient manual registers, spreadsheets, and paper-based tracking.
